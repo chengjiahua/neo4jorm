@@ -9,11 +9,13 @@ type Config struct {
 	Username string
 	Password string
 	Database string
+	Debug    bool
 }
 
 type Client struct {
 	driver neo4j.Driver
 	config *Config
+	debug  bool
 }
 
 func NewClient(config *Config) (*Client, error) {
@@ -34,6 +36,7 @@ func NewClient(config *Config) (*Client, error) {
 	return &Client{
 		driver: driver,
 		config: config,
+		debug:  config.Debug,
 	}, nil
 }
 
