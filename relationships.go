@@ -8,12 +8,18 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 )
 
+type RelationshipConfig struct {
+	Type      string // 关系类型
+	Direction string // 方向: incoming/outgoing
+	Merge     bool   // 是否使用MERGE
+}
+
 type Relationship struct {
-	From      interface{}    // 起始节点
-	To        interface{}    // 目标节点
-	Type      string         // 关系类型
-	Props     interface{}    // 关系属性
-	Direction string         // 方向 (LEFT/RIGHT/BOTH)
+	From      interface{}
+	To        interface{}
+	Type      string
+	Direction string
+	Props     map[string]interface{}
 }
 
 func (c *Client) Relate(rel *Relationship) error {
@@ -44,8 +50,8 @@ func buildRelationshipQuery(from, to *Model, rel *Relationship) (string, map[str
 	params := make(map[string]interface{})
 
 	// MATCH起始节点
-	sb.WriteString(fmt.Sprintf("MATCH (a:%s {%s: $fromPk})\n", 
-		strings.Join(from.labels, ":"), 
+	sb.WriteString(fmt.Sprintf("MATCH (a:%s {%s: $fromPk})\n",
+		strings.Join(from.labels, ":"),
 		from.fieldMap[from.primaryKey]))
 	params["fromPk"] = getPrimaryKeyValue(rel.From)
 
@@ -67,7 +73,7 @@ func buildRelationshipQuery(from, to *Model, rel *Relationship) (string, map[str
 	}
 
 	sb.WriteString(fmt.Sprintf("CREATE (a)%s[:%s $props]%s(b)\n",
-		direction[:1],  // 第一个方向符号
+		direction[:1], // 第一个方向符号
 		rel.Type,
 		direction[1:])) // 第二个方向符号
 
@@ -92,3 +98,5 @@ func getPrimaryKeyValue(node interface{}) interface{} {
 	field := v.FieldByName(model.primaryKey)
 	return field.Interface()
 }
+
+

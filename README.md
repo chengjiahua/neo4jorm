@@ -10,20 +10,19 @@ Neo4j ORM 是一个用于与 Neo4j 数据库交互的对象关系映射（ORM）
 
 请确保您的系统已经安装了 Golang。然后运行以下命令来安装依赖项：
 
-因为使用了merge操作，需要使用neo4j4.4+及以上版本
+因为使用了 merge 操作，需要使用 neo4j4.4+及以上版本
 
-如果你的neo4j是v5版本，需要使用以下命令安装neo4j驱动
+如果你的 neo4j 是 v5 版本，需要使用以下命令安装 neo4j 驱动
 
 ```bash
 go get github.com/neo4j/neo4j-go-driver/v5/neo4j
 ```
 
-如果你的neo4j是v4版本，需要使用以下命令安装neo4j驱动
+如果你的 neo4j 是 v4 版本，需要使用以下命令安装 neo4j 驱动
 
 ```bash
 go get github.com/neo4j/neo4j-go-driver/v4/neo4j
 ```
-
 
 ```bash
 go get github.com/chengjiahua/neo4jorm
@@ -97,3 +96,13 @@ func main() {
 ## 许可证
 
 本项目采用 MIT 许可证。
+
+## 工作计划
+
+```
+- [2025/2/28] 支持写入节点操作
+- [2025/3/1] 支持批量写入节点，灵活更新节点操作
+- [2025/3/2] 支持读取单个节点，多个节点操作
+- [x] 支持读取关系操作
+- [x] 支持批量灵活写入节点及关系操作
+```

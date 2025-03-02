@@ -29,8 +29,7 @@ func (m *Model) CreateBatch(nodes interface{}) error {
 	defer session.Close()
 
 	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
-		query, params := buildCreateBatchQuery(m, nodesValue)
-		result, err := tx.Run(query, params)
+		result, err := tx.Run(buildCreateBatchQuery(m, nodesValue))
 		if err != nil {
 			return nil, fmt.Errorf("create batch failed: %w", err)
 		}
@@ -68,8 +67,11 @@ func buildCreateBatchQuery(m *Model, nodesValue reflect.Value) (string, map[stri
 		props, _ := structToProperties(node)
 		processed = append(processed, map[string]interface{}{"props": props})
 	}
-
-	return sb.String(), map[string]interface{}{"nodes": processed}
+	params := map[string]interface{}{"nodes": processed}
+	if m.debug {
+		fmt.Println(sb.String(), params)	
+	}
+	return sb.String(), params
 }
 
 // 更新节点
@@ -199,7 +201,7 @@ func (m *Model) DeleteOne(node interface{}) error {
 func (m *Model) DeleteBatch(nodes interface{}) error {
 	nodesValue := reflect.ValueOf(nodes)
 	if nodesValue.Kind() != reflect.Slice && nodesValue.Kind() != reflect.Array {
-		return fmt.Errorf("%w: expected slice/array, got %T", ErrInvalidModel, nodes)
+		return fmt.Errorf("%s: expected slice/array, got %T", ErrInvalidModel, nodes)
 	}
 
 	session := m.client.driver.NewSession(neo4j.SessionConfig{

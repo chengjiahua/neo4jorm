@@ -6,27 +6,6 @@ import (
 	"github.com/chengjiahua/neo4jorm"
 )
 
-type User struct {
-	UUID  string `neo4j:"primary;generated;label:User"`
-	Name  string `neo4j:"name:username;index"`
-	Email string `neo4j:"index;unique"`
-	Age   int    `neo4j:"index"`
-}
-
-type Post struct {
-	ID      string `neo4j:"primary;generated;label:Post"`
-	Title   string `neo4j:"name:title;index:fulltext"`
-	Content string `neo4j:"name:content;index:fulltext"`
-}
-
-type Product struct {
-	SKU      string  `neo4j:"name:sku;primary;label:Product"` // 确保主键标签正确
-	Name     string  `neo4j:"name:product_name"`
-	Price    float64 `neo4j:"name:price"`
-	Stock    *int    `neo4j:"name:stock"`
-	Category string  `neo4j:"name:category"`
-}
-
 /*
 支持的特殊选项列表
 选项	说明	示例
@@ -36,6 +15,19 @@ label	节点标签	label=Product
 */
 
 func main() {
+	basicExample()
+}
+
+func basicExample() {
+
+	type Product struct {
+		SKU      string  `neo4j:"name:sku;primary;label:Product"` // 确保主键标签正确
+		Name     string  `neo4j:"name:product_name"`
+		Price    float64 `neo4j:"name:price"`
+		Stock    *int    `neo4j:"name:stock"`
+		Category string  `neo4j:"name:category"`
+	}
+
 	// 初始化客户端
 	config := &neo4jorm.Config{
 		URI:      "bolt://localhost:7687",
@@ -49,6 +41,7 @@ func main() {
 		panic(err)
 	}
 	defer orm.Close()
+
 	intV := []int{0, 2, 3}
 	products := []*Product{
 		{SKU: "P1001", Name: "dgsaxvz", Category: "old", Stock: &intV[0], Price: 111.99},
@@ -62,7 +55,7 @@ func main() {
 		panic(err)
 	}
 
-	err = ProductOrm.DebugInfo().Update(Product{SKU: "P1001", Category: "new blance", Name: "cjh", Price: 100.99, Stock: &intV[2]})
+	err = ProductOrm.DebugInfo().Update(Product{SKU: "P1001", Category: "new blance", Name: "bbbb", Price: 100.99, Stock: &intV[2]})
 	if err != nil {
 		panic(err)
 	}
@@ -77,4 +70,18 @@ func main() {
 		fmt.Println("DeleteOne err: ", err)
 	}
 
+	FindRes := []Product{}
+	err = ProductOrm.DebugInfo().Find(&FindRes)
+	if err != nil {
+		fmt.Println("Find err: ", FindRes)
+	}
+	fmt.Printf("res:%+v \n", FindRes)
+
+	FindOneRes := Product{}
+	err = ProductOrm.Where(Product{SKU: "P1001", Name: "bbbb"}).OrderBy("product_name").Limit(1).DebugInfo().FindOne(&FindOneRes)
+	if err != nil {
+		fmt.Println("Find err: ", FindOneRes)
+	}
+	fmt.Printf("res:%+v \n", FindOneRes)
+	return
 }

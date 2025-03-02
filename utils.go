@@ -2,6 +2,7 @@ package neo4jorm
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 
@@ -128,5 +129,70 @@ func isZeroValue(v reflect.Value) bool {
 		return v.Len() == 0
 	default:
 		return reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface())
+	}
+}
+
+// convertToInt 尝试将值转换为int64
+func convertToInt(val reflect.Value) (int64, bool) {
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return val.Int(), true
+	case reflect.Float32, reflect.Float64:
+		// 处理浮点型截断
+		return int64(val.Float()), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		// 处理无符号整型
+		return int64(val.Uint()), true
+	case reflect.Bool:
+		// 处理布尔型（true=1，false=0）
+		if val.Bool() {
+			return 1, true
+		}
+		return 0, true
+	default:
+		return 0, false
+	}
+}
+
+// convertToUint 尝试将值转换为uint64
+func convertToUint(val reflect.Value) (uint64, bool) {
+	switch val.Kind() {
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return val.Uint(), true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		// 处理负数情况
+		if ival := val.Int(); ival >= 0 {
+			return uint64(ival), true
+		}
+	case reflect.Float32, reflect.Float64:
+		// 处理浮点范围和精度
+		if fval := val.Float(); fval >= 0 && fval <= math.MaxUint64 {
+			return uint64(fval), true
+		}
+	case reflect.Bool:
+		if val.Bool() {
+			return 1, true
+		}
+		return 0, true
+	}
+	return 0, false
+}
+
+// convertToFloat 尝试将值转换为float64
+func convertToFloat(val reflect.Value) (float64, bool) {
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return float64(val.Int()), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return float64(val.Uint()), true
+	case reflect.Float32, reflect.Float64:
+		return val.Float(), true
+	case reflect.Bool:
+		if val.Bool() {
+			return 1.0, true
+		}
+		return 0.0, true
+	default:
+		return 0, false
 	}
 }

@@ -14,6 +14,12 @@ type Model struct {
 	primaryKey string
 	fieldMap   map[string]string
 	generated  map[string]bool
+
+	//查询参数
+	conditions []string               // 存储WHERE条件表达式
+	params     map[string]interface{} // 查询参数
+	orderBy    []string               // 排序字段
+	limit      int                    // 限制结果数量
 }
 
 // 修改model.go中的newModel函数
@@ -83,12 +89,21 @@ func (m *Model) DebugInfo() *Model {
 			" primaryKey:%s"+
 			" fieldMap:%v"+
 			" generated:%v"+
+			" conditions:%v"+
+			" params:%v"+
+			" orderBy:%v"+
+            " limit:%v"+
 			"}",
 		m.modelType.String(),
 		m.elemType.String(),
 		m.labels,
 		m.primaryKey,
 		m.fieldMap,
-		m.generated))
+		m.generated,
+		m.conditions,
+		m.params,
+		m.orderBy,
+		m.limit,
+	))
 	return m
 }

@@ -1,8 +1,8 @@
-module examples
+module basic
 
 go 1.24.0
 
-replace github.com/chengjiahua/neo4jorm => ../../neo4jorm
+replace github.com/chengjiahua/neo4jorm => ../
 
 require (
 	github.com/chengjiahua/neo4jorm v0.0.0-20250301100008-58121db791fa // indirect
