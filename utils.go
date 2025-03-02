@@ -5,23 +5,21 @@ import (
 	"math"
 	"reflect"
 	"strings"
-
-	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 )
 
 const (
 	tagName      = "neo4j"
 	tagPrimary   = "primary"
-	tagLabel     = "label"
+	tagTable     = "table"
 	tagGenerated = "generated"
 	tagkey       = "name"
 )
 
 func parseTag(tag string) map[string]string {
 	result := make(map[string]string)
-	parts := strings.Split(tag, ";")
+	parts := strings.Split(tag, ",")
 	for _, part := range parts {
-		kv := strings.Split(part, ":")
+		kv := strings.Split(part, "=")
 		if len(kv) >= 2 {
 			key := strings.TrimSpace(kv[0])
 			value := strings.TrimSpace(strings.Join(kv[1:], ":"))
@@ -34,40 +32,6 @@ func parseTag(tag string) map[string]string {
 		}
 	}
 	return result
-}
-
-func decodeNode(node neo4j.Node, out interface{}) error {
-	rv := reflect.ValueOf(out)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
-		return fmt.Errorf("decodeNode: output must be a non-nil pointer")
-	}
-
-	rv = rv.Elem()
-	rt := rv.Type()
-
-	props := node.Props
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		tag := field.Tag.Get(tagName)
-		if tag == "" {
-			continue
-		}
-
-		tags := parseTag(tag)
-		propName := field.Name
-		if name, ok := tags["name"]; ok {
-			propName = name
-		}
-
-		if value, ok := props[propName]; ok {
-			fieldValue := rv.Field(i)
-			val := reflect.ValueOf(value)
-			if val.Type().ConvertibleTo(fieldValue.Type()) {
-				fieldValue.Set(val.Convert(fieldValue.Type()))
-			}
-		}
-	}
-	return nil
 }
 
 // structToProperties 将结构体转换为属性
@@ -195,4 +159,13 @@ func convertToFloat(val reflect.Value) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// 工具函数：获取基础类型
+func getType(obj interface{}) reflect.Type {
+	t := reflect.TypeOf(obj)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t
 }

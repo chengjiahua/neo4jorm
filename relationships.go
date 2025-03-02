@@ -8,95 +8,175 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v4/neo4j"
 )
 
+// RelationshipConfig 存储关系配置
 type RelationshipConfig struct {
-	Type      string // 关系类型
-	Direction string // 方向: incoming/outgoing
-	Merge     bool   // 是否使用MERGE
+	Type      string
+	Direction string // incoming, outgoing, both
+	Merge     bool
 }
 
 type Relationship struct {
 	From      interface{}
 	To        interface{}
 	Type      string
-	Direction string
 	Props     map[string]interface{}
+	Direction string
 }
 
-func (c *Client) Relate(rel *Relationship) error {
-	session := c.driver.NewSession(neo4j.SessionConfig{
-		DatabaseName: c.config.Database,
+// createRelationship 创建关系对象
+func createRelationship(from, to interface{}, config RelationshipConfig) Relationship {
+	return Relationship{
+		From:      from,
+		To:        to,
+		Type:      config.Type,
+		Direction: config.Direction,
+		Props:     extractRelationshipProps(to),
+	}
+}
+
+// extractRelationshipProps 提取关系属性
+func extractRelationshipProps(obj interface{}) map[string]interface{} {
+	props := make(map[string]interface{})
+	rv := reflect.ValueOf(obj)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+
+	// 提取嵌套属性
+	if rv.Kind() == reflect.Struct {
+		for i := 0; i < rv.NumField(); i++ {
+			field := rv.Type().Field(i)
+			if tag := field.Tag.Get(tagName); tag != "" {
+				props[strings.Split(tag, ",")[0]] = rv.Field(i).Interface()
+			}
+		}
+	}
+	return props
+}
+
+// CreateRelation 创建关系（使用主键判断）
+// Relation 定义关系输入结构
+type Relation struct {
+	Start interface{} // 起始节点结构体
+	End   interface{} // 目标节点结构体
+}
+
+// 批量创建无属性关系方法
+func (m *Model) CreateRelations(relations []Relation, relType string) error {
+	session := m.client.driver.NewSession(neo4j.SessionConfig{
+		DatabaseName: m.client.config.Database,
 	})
 	defer session.Close()
 
-	// 获取模型信息
-	fromModel := c.Model(rel.From)
-	toModel := c.Model(rel.To)
+	// 使用UNWIND优化批量操作
+	var query strings.Builder
+	query.WriteString("UNWIND $rels AS rel ")
+	query.WriteString("MERGE (a:%s { %s: rel.startVal }) ")
+	query.WriteString("MERGE (b:%s { %s: rel.endVal }) ")
+	query.WriteString("MERGE (a)-[r1:%s]->(b) ")
+	query.WriteString("MERGE (a)-[r2:%s]->(b) ")
+	var (
+		startPK string
+		endPK   string
+		start   *Model
+		end     *Model
+	)
 
-	// 构建Cypher
-	query, params := buildRelationshipQuery(fromModel, toModel, rel)
+	// 提前校验并获取元数据
+	if len(relations) > 0 {
+		// 获取第一个关系的元数据（假设所有关系类型相同）
+		firstRel := relations[0]
+		start = newModel(m.client, firstRel.Start)
+		end = newModel(m.client, firstRel.End)
+		startPK = start.fieldMap[start.primaryKey]
+		endPK = end.fieldMap[end.primaryKey]
+	}
 
-	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
-		result, err := tx.Run(query, params)
-		if err != nil {
-			return nil, err
-		}
-		return result.Consume()
-	})
+	// 构建最终查询
+	finalQuery := fmt.Sprintf(query.String(),
+		start.table, startPK,
+		end.table, endPK,
+		relType,
+		relType,
+	)
+
+	// 准备批量参数
+	relsParams := make([]map[string]interface{}, 0, len(relations))
+	for _, rel := range relations {
+
+		relsParams = append(relsParams, map[string]interface{}{
+			"startVal": getStructKeyValue(rel.Start, start.primaryKey),
+			"endVal":   getStructKeyValue(rel.End, end.primaryKey),
+		})
+	}
+
+	params := map[string]interface{}{
+		"rels": relsParams,
+	}
+
+	if m.debug {
+		fmt.Printf("Executing:\n%s\nWith params: %+v\n", finalQuery, params)
+	}
+
+	// 执行批量操作
+	_, err := session.Run(finalQuery, params)
 	return err
 }
 
-func buildRelationshipQuery(from, to *Model, rel *Relationship) (string, map[string]interface{}) {
-	var sb strings.Builder
-	params := make(map[string]interface{})
+// DeleteRelation 删除关系（使用主键判断）
+func (m *Model) DeleteRelation(start, end interface{}, relType string) error {
+	// session := m.client.driver.NewSession(neo4j.SessionConfig{
+	// 	DatabaseName: m.client.config.Database,
+	// })
+	// defer session.Close()
 
-	// MATCH起始节点
-	sb.WriteString(fmt.Sprintf("MATCH (a:%s {%s: $fromPk})\n",
-		strings.Join(from.labels, ":"),
-		from.fieldMap[from.primaryKey]))
-	params["fromPk"] = getPrimaryKeyValue(rel.From)
+	// // 生成主键条件
+	// startPK, startVal, err := getPrimaryKeyValue(start)
+	// if err != nil {
+	// 	return err
+	// }
+	// endPK, endVal, err := getPrimaryKeyValue(end)
+	// if err != nil {
+	// 	return err
+	// }
 
-	// MATCH目标节点
-	sb.WriteString(fmt.Sprintf("MATCH (b:%s {%s: $toPk})\n",
-		strings.Join(to.labels, ":"),
-		to.fieldMap[to.primaryKey]))
-	params["toPk"] = getPrimaryKeyValue(rel.To)
+	// query := fmt.Sprintf(`
+	// MATCH (a:%s {%s: $startVal})-[r:%s]->(b:%s {%s: $endVal})
+	// DELETE r
+	// `,
+	// 	getModelLabel(start), startPK, relType,
+	// 	getModelLabel(end), endPK)
 
-	// 创建关系
-	direction := "-"
-	switch rel.Direction {
-	case "LEFT":
-		direction = "<-"
-	case "RIGHT":
-		direction = "->"
-	default:
-		direction = "-"
-	}
+	// params := map[string]interface{}{
+	// 	"startVal": startVal,
+	// 	"endVal":   endVal,
+	// }
 
-	sb.WriteString(fmt.Sprintf("CREATE (a)%s[:%s $props]%s(b)\n",
-		direction[:1], // 第一个方向符号
-		rel.Type,
-		direction[1:])) // 第二个方向符号
+	// _, err = session.Run(query, params)
+	return nil
 
-	// 添加属性
-	if rel.Props != nil {
-		props, _ := structToProperties(rel.Props)
-		params["props"] = props
-	} else {
-		params["props"] = map[string]interface{}{}
-	}
-
-	return sb.String(), params
 }
 
-func getPrimaryKeyValue(node interface{}) interface{} {
-	v := reflect.ValueOf(node)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
+// 获取主键值的辅助函数
+func getStructKeyValue(model interface{}, fieldKey string) (Value interface{}) {
+	val := reflect.ValueOf(model)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
 	}
 
-	model := Model{} // 这里实际应该通过反射获取主键字段
-	field := v.FieldByName(model.primaryKey)
-	return field.Interface()
+	return val.FieldByName(fieldKey).Interface()
 }
 
+// 获取模型标签的辅助函数
+func getModelLabel(model interface{}) string {
+	val := reflect.ValueOf(model)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
 
+	// 从结构体标签获取标签
+	if labelTag := val.Type().Field(0).Tag.Get("label"); labelTag != "" {
+		return labelTag
+	}
+	return val.Type().Name() // 默认使用类型名
+}

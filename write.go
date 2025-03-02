@@ -43,11 +43,7 @@ func buildCreateBatchQuery(m *Model, nodesValue reflect.Value) (string, map[stri
 	var sb strings.Builder
 	sb.WriteString("UNWIND $nodes AS node ")
 	sb.WriteString("CREATE (n")
-
-	// 添加标签
-	for _, label := range m.labels {
-		sb.WriteString(":" + label)
-	}
+	sb.WriteString(":" + m.table)
 	sb.WriteString(") ")
 
 	// 设置属性
@@ -69,7 +65,7 @@ func buildCreateBatchQuery(m *Model, nodesValue reflect.Value) (string, map[stri
 	}
 	params := map[string]interface{}{"nodes": processed}
 	if m.debug {
-		fmt.Println(sb.String(), params)	
+		fmt.Println(sb.String(), params)
 	}
 	return sb.String(), params
 }
@@ -84,7 +80,7 @@ func (m *Model) Update(node interface{}) error {
 	pkValue := props[m.fieldMap[m.primaryKey]]
 	query := fmt.Sprintf(
 		"MATCH (n:%s {%s: $pk}) SET n += $props",
-		strings.Join(m.labels, ":"),
+		m.table,
 		m.fieldMap[m.primaryKey],
 	)
 
@@ -133,15 +129,6 @@ func (m *Model) MergeBatch(nodes interface{}) error {
 		return fmt.Errorf("%s: expected slice, got %T", ErrInvalidModel, nodes)
 	}
 
-	// 验证元素类型是否匹配
-	if nodesValue.Type().Elem() != m.elemType {
-		return fmt.Errorf("%s: expected []%s, got %T",
-			ErrInvalidModel,
-			m.elemType,
-			nodes,
-		)
-	}
-
 	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
 		result, err := tx.Run(buildMergeQuery(m, nodesValue))
 		if err != nil {
@@ -159,9 +146,7 @@ func buildMergeQuery(m *Model, nodesValue reflect.Value) (string, map[string]int
 
 	sb.WriteString("UNWIND $nodes AS node ")
 	sb.WriteString("MERGE (n")
-	for _, label := range m.labels {
-		sb.WriteString(":" + label)
-	}
+	sb.WriteString(":" + m.table)
 	sb.WriteString(" { ")
 	// 关键修正点：使用node.props访问属性
 	sb.WriteString(m.fieldMap[m.primaryKey] + ": node.props." + m.fieldMap[m.primaryKey])
@@ -236,9 +221,14 @@ func buildDeleteQuery(m *Model, nodesValue reflect.Value) (string, map[string]in
 
 	// 构建Cypher
 	sb.WriteString("UNWIND $pks AS pk ")
-	sb.WriteString(fmt.Sprintf("MATCH (n:%s) ", strings.Join(m.labels, ":")))
+	sb.WriteString(fmt.Sprintf("MATCH (n:%s) ", m.table))
 	sb.WriteString(fmt.Sprintf("WHERE n.%s = pk ", m.fieldMap[m.primaryKey]))
 	sb.WriteString(" DETACH DELETE n")
+	params := map[string]interface{}{"pks": pks}
 
-	return sb.String(), map[string]interface{}{"pks": pks}
+	if m.debug {
+		fmt.Println(sb.String(), params)
+	}
+
+	return sb.String(), params
 }

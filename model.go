@@ -3,14 +3,24 @@ package neo4jorm
 import (
 	"fmt"
 	"reflect"
+	"sync"
 )
+
+// 全局模型注册器
+var modelRegistry = &Registry{
+	models: &sync.Map{},
+}
+
+type Registry struct {
+	models *sync.Map // 存储 [reflect.Type]*Model
+}
 
 type Model struct {
 	debug      bool
 	client     *Client
 	modelType  reflect.Type
 	elemType   reflect.Type // 新增字段，保存切片元素类型
-	labels     []string
+	table      string
 	primaryKey string
 	fieldMap   map[string]string
 	generated  map[string]bool
@@ -22,27 +32,66 @@ type Model struct {
 	limit      int                    // 限制结果数量
 }
 
+func (m *Model) register() error {
+	modelRegistry.models.Store(m.modelType, m)
+	return nil
+}
+
+// 获取已注册模型
+func getModel(obj interface{}) (*Model, bool) {
+	t := getType(obj)
+	val, ok := modelRegistry.models.Load(t)
+	if !ok {
+		return nil, false
+	}
+	return val.(*Model).clone(), true
+}
+
 // 修改model.go中的newModel函数
 func newModel(client *Client, model interface{}) *Model {
+	m, ok := getModel(model)
+	if ok {
+		return m
+	}
+
 	modelType := reflect.TypeOf(model)
 	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
 
-	m := &Model{
+	m = &Model{
 		client:    client,
 		debug:     client.debug,
 		modelType: modelType,
-		elemType:  reflect.PtrTo(modelType), // 保存切片元素类型
+		elemType:  modelType, // 保存切片元素类型
 		fieldMap:  make(map[string]string),
 		generated: make(map[string]bool),
 	}
 
 	m.parseTags()
+	m.register()
+
 	if m.debug {
 		m.DebugInfo()
 	}
 	return m
+}
+
+func (m *Model) clone() *Model {
+	return &Model{
+		debug:      m.debug,
+		client:     m.client,
+		modelType:  m.modelType,
+		elemType:   m.elemType,
+		table:      m.table,
+		primaryKey: m.primaryKey,
+		fieldMap:   m.fieldMap,
+		generated:  m.generated,
+		conditions: m.conditions,
+		params:     m.params,
+		orderBy:    m.orderBy,
+		limit:      m.limit,
+	}
 }
 
 func (m *Model) setDebug(debug bool) {
@@ -59,8 +108,8 @@ func (m *Model) parseTags() {
 
 		tags := parseTag(tag)
 		// 处理标签
-		if label, ok := tags[tagLabel]; ok {
-			m.labels = append(m.labels, label)
+		if table, ok := tags[tagTable]; ok {
+			m.table = table
 		}
 		if _, ok := tags[tagPrimary]; ok {
 			m.primaryKey = field.Name
@@ -85,18 +134,18 @@ func (m *Model) DebugInfo() *Model {
 		"Model{"+
 			" modelType:%s"+
 			" elemType:%s"+
-			" labels:%v"+
+			" table:%v"+
 			" primaryKey:%s"+
 			" fieldMap:%v"+
 			" generated:%v"+
 			" conditions:%v"+
 			" params:%v"+
 			" orderBy:%v"+
-            " limit:%v"+
+			" limit:%v"+
 			"}",
 		m.modelType.String(),
 		m.elemType.String(),
-		m.labels,
+		m.table,
 		m.primaryKey,
 		m.fieldMap,
 		m.generated,

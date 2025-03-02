@@ -66,42 +66,6 @@ func (m *Model) Where(condition interface{}, args ...interface{}) *Model {
 	return m
 }
 
-// parseStructCondition 解析结构体为WHERE条件
-func (m *Model) parseStructCondition(condition interface{}) (string, map[string]interface{}) {
-	var conditions []string
-	params := make(map[string]interface{})
-
-	val := reflect.ValueOf(condition)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	// 类型校验
-	if val.Type() != m.modelType {
-		return "", nil
-	}
-
-	for i := 0; i < val.NumField(); i++ {
-		field := m.modelType.Field(i)
-		fieldVal := val.Field(i)
-
-		// 获取映射后的属性名
-		propName := m.fieldMap[field.Name]
-
-		// 检查是否跳过空值
-		if isZeroValue(fieldVal) {
-			continue
-		}
-
-		// 构造条件表达式
-		paramName := propName
-		conditions = append(conditions, fmt.Sprintf("n.%s = $%s", propName, paramName))
-		params[paramName] = fieldVal.Interface()
-	}
-
-	return strings.Join(conditions, " AND "), params
-}
-
 // OrderBy 添加排序条件
 func (m *Model) OrderBy(fields ...string) *Model {
 	m.orderBy = append(m.orderBy, fmt.Sprintf(" '%s' ", strings.Join(fields, "','")))
@@ -117,7 +81,7 @@ func (m *Model) Limit(limit int) *Model {
 // buildQuery 构建Cypher查询语句
 func (m *Model) buildQuery() string {
 	var query strings.Builder
-	query.WriteString(fmt.Sprintf("MATCH (n:%s)", strings.Join(m.labels, ":")))
+	query.WriteString(fmt.Sprintf("MATCH (n:%s)", m.table))
 
 	// 处理WHERE条件
 	if len(m.conditions) > 0 {
