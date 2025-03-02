@@ -119,7 +119,7 @@ func (m *Model) executeQuery(query string, out interface{}, single bool) error {
 	defer session.Close()
 
 	if m.debug {
-		fmt.Println(query, m.params)
+		fmt.Printf("Executing Query:\n%s\nWith params: %+v\n", query, m.params)
 	}
 
 	result, err := session.Run(query, m.params)

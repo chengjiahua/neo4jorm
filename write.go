@@ -90,7 +90,7 @@ func (m *Model) Update(node interface{}) error {
 	}
 
 	if m.debug {
-		fmt.Println(query, params)
+		fmt.Printf("Executing Update:\n%s\nWith params: %+v\n", query, params)
 	}
 
 	session := m.client.driver.NewSession(neo4j.SessionConfig{
@@ -168,8 +168,10 @@ func buildMergeQuery(m *Model, nodesValue reflect.Value) (string, map[string]int
 		})
 	}
 	params["nodes"] = processedNodes
+	query := sb.String()
+
 	if m.debug {
-		fmt.Println(sb.String(), params)
+		fmt.Printf("Executing Merge:\n%s\nWith params: %+v\n", query, params)
 	}
 	return sb.String(), params
 }
@@ -225,9 +227,9 @@ func buildDeleteQuery(m *Model, nodesValue reflect.Value) (string, map[string]in
 	sb.WriteString(fmt.Sprintf("WHERE n.%s = pk ", m.fieldMap[m.primaryKey]))
 	sb.WriteString(" DETACH DELETE n")
 	params := map[string]interface{}{"pks": pks}
-
+	query := sb.String()
 	if m.debug {
-		fmt.Println(sb.String(), params)
+		fmt.Printf("Executing Merge:\n%s\nWith params: %+v\n", query, params)
 	}
 
 	return sb.String(), params

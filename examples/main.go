@@ -86,6 +86,13 @@ func basicExample(orm *neo4jorm.Client) error {
 		fmt.Println("CreateRelation err: ", err)
 	}
 
+	err = ProductOrm.DebugInfo().DeleteRelations([]neo4jorm.Relation{
+		{Start: &Product{SKU: "P1001"}, End: &Product{SKU: "P1002"}},
+	}, "RELATION")
+	if err != nil {
+		fmt.Println("DeleteRelations err: ", err)
+	}
+
 	err = ProductOrm.DebugInfo().DeleteOne(&Product{SKU: "P1003"})
 	if err != nil {
 		fmt.Println("DeleteOne err: ", err)

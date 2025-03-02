@@ -63,6 +63,11 @@ type Relation struct {
 
 // 批量创建无属性关系方法
 func (m *Model) CreateRelations(relations []Relation, relType string) error {
+	// 空关系列表直接返回，避免无效操作
+	if len(relations) == 0 {
+		return nil
+	}
+
 	session := m.client.driver.NewSession(neo4j.SessionConfig{
 		DatabaseName: m.client.config.Database,
 	})
@@ -115,7 +120,7 @@ func (m *Model) CreateRelations(relations []Relation, relType string) error {
 	}
 
 	if m.debug {
-		fmt.Printf("Executing:\n%s\nWith params: %+v\n", finalQuery, params)
+		fmt.Printf("Executing CreateRelations:\n%s\nWith params: %+v\n", finalQuery, params)
 	}
 
 	// 执行批量操作
@@ -124,37 +129,57 @@ func (m *Model) CreateRelations(relations []Relation, relType string) error {
 }
 
 // DeleteRelation 删除关系（使用主键判断）
-func (m *Model) DeleteRelation(start, end interface{}, relType string) error {
-	// session := m.client.driver.NewSession(neo4j.SessionConfig{
-	// 	DatabaseName: m.client.config.Database,
-	// })
-	// defer session.Close()
+func (m *Model) DeleteRelations(relations []Relation, relType string) error {
+	// 空关系列表直接返回，避免无效操作
+	if len(relations) == 0 {
+		return nil
+	}
 
-	// // 生成主键条件
-	// startPK, startVal, err := getPrimaryKeyValue(start)
-	// if err != nil {
-	// 	return err
-	// }
-	// endPK, endVal, err := getPrimaryKeyValue(end)
-	// if err != nil {
-	// 	return err
-	// }
+	session := m.client.driver.NewSession(neo4j.SessionConfig{
+		DatabaseName: m.client.config.Database,
+	})
+	defer session.Close()
 
-	// query := fmt.Sprintf(`
-	// MATCH (a:%s {%s: $startVal})-[r:%s]->(b:%s {%s: $endVal})
-	// DELETE r
-	// `,
-	// 	getModelLabel(start), startPK, relType,
-	// 	getModelLabel(end), endPK)
+	var query strings.Builder
+	// 使用UNWIND批量处理，MATCH定位关系后删除
+	query.WriteString("UNWIND $rels AS rel ")
+	query.WriteString("MATCH (a:%s {%s: rel.startVal})-[r:%s]->(b:%s {%s: rel.endVal}) ")
+	query.WriteString("DELETE r")
 
-	// params := map[string]interface{}{
-	// 	"startVal": startVal,
-	// 	"endVal":   endVal,
-	// }
+	// 获取元数据（复用原有逻辑）
+	firstRel := relations[0]
+	start := newModel(m.client, firstRel.Start)
+	end := newModel(m.client, firstRel.End)
+	startPK := start.fieldMap[start.primaryKey]
+	endPK := end.fieldMap[end.primaryKey]
 
-	// _, err = session.Run(query, params)
-	return nil
+	// 构建最终查询
+	finalQuery := fmt.Sprintf(query.String(),
+		start.table, startPK,
+		relType,
+		end.table, endPK,
+	)
 
+	// 准备批量参数（与CreateRelations保持相同结构）
+	relsParams := make([]map[string]interface{}, 0, len(relations))
+	for _, rel := range relations {
+		relsParams = append(relsParams, map[string]interface{}{
+			"startVal": getStructKeyValue(rel.Start, start.primaryKey),
+			"endVal":   getStructKeyValue(rel.End, end.primaryKey),
+		})
+	}
+
+	params := map[string]interface{}{
+		"rels": relsParams,
+	}
+
+	if m.debug {
+		fmt.Printf("Executing Delete:\n%s\nWith params: %+v\n", finalQuery, params)
+	}
+
+	// 执行删除操作
+	_, err := session.Run(finalQuery, params)
+	return err
 }
 
 // 获取主键值的辅助函数
@@ -165,18 +190,4 @@ func getStructKeyValue(model interface{}, fieldKey string) (Value interface{}) {
 	}
 
 	return val.FieldByName(fieldKey).Interface()
-}
-
-// 获取模型标签的辅助函数
-func getModelLabel(model interface{}) string {
-	val := reflect.ValueOf(model)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	// 从结构体标签获取标签
-	if labelTag := val.Type().Field(0).Tag.Get("label"); labelTag != "" {
-		return labelTag
-	}
-	return val.Type().Name() // 默认使用类型名
 }
